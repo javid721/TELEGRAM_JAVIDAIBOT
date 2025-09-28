@@ -1,4 +1,4 @@
-# bot.py ...
+# bot.py .. 1404/7/6
 import os
 import asyncio
 from fastapi import FastAPI, Request, HTTPException
