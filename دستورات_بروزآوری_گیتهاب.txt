@@ -1,0 +1,24 @@
+# 1. ÑİÊä Èå ãÓíÑ Ñæå
+cd /d/AI/TELEGRAM_JAVIDAIBOT   # Git Bash
+# cd /mnt/d/AI/TELEGRAM_JAVIDAIBOT   # WSL (ÏÑ ÕæÑÊ ÇÓÊİÇÏå)
+
+# 2. ÈÑÑÓí remote
+git remote -v
+
+# 3. ÇÑ remote Ñæí HTTPS ÈæÏ¡ ÊÛííÑ Èå SSH
+git remote set-url origin git@github.com:javid721/TELEGRAM_JAVIDAIBOT.git
+
+# 4. ÊÓÊ ÇÊÕÇá SSH
+ssh -T git@github.com
+
+# 5. äãÇíÔ æÖÚíÊ Ñæå
+git status
+
+# 6. ÇÖÇİå ˜ÑÏä åãå ÊÛííÑÇÊ
+git add .
+
+# 7. ÓÇÎÊ commit ÈÇ íÇã íÔİÑÖ (ãíÊæäí ÊÛííÑ ÈÏí)
+git commit -m "Update project changes"
+
+# 8. Push Èå íÊåÇÈ
+git push origin main
