@@ -1,4 +1,4 @@
-import os
+﻿import os
 import asyncio
 from flask import Flask, request
 from telegram import Update
@@ -6,19 +6,19 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from openai import OpenAI
 
 # -------------------------------
-# keys
+# کليدها
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("key TELEGRAM_TOKEN and OPENAI_API_KEY must be set!")
+    raise RuntimeError("کليدهاي TELEGRAM_TOKEN و OPENAI_API_KEY بايد ست شوند!")
 
 # -------------------------------
-# conn OpenAI
+# اتصال به OpenAI
 # -------------------------------
 client = OpenAI(api_key=OPENAI_API_KEY)
-MODEL = "gpt-4o-mini"   # or gpt-3.5-turbo 
+MODEL = "gpt-4o-mini"   # يا gpt-3.5-turbo براي مصرف کمتر
 
 def ask_openai(prompt: str) -> str:
     try:
@@ -29,13 +29,13 @@ def ask_openai(prompt: str) -> str:
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"? error conn with OpenAI: {e}"
+        return f"? خطا در ارتباط با OpenAI: {e}"
 
 # -------------------------------
-# telegram handler
+# هندلرهاي تلگرام
 # -------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("hi OpenAI ask me.")
+    await update.message.reply_text("سلام ?? من با OpenAI وصل شدم! هرچي خواستي بپرس.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
@@ -43,14 +43,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 # -------------------------------
-# build telegram app
+# ساخت اپليکيشن تلگرام
 # -------------------------------
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # -------------------------------
-# create Flask for webhook
+# ساخت Flask براي وبهوک
 # -------------------------------
 flask_app = Flask(__name__)
 
@@ -66,7 +66,7 @@ async def webhook():
     return "ok", 200
 
 # -------------------------------
-# run app
+# اجراي برنامه
 # -------------------------------
 if __name__ == "__main__":
     os.environ["PORT"] = "4000"
