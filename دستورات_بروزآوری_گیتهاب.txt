@@ -27,5 +27,4 @@ git push origin main
 git init
 git add .
 git commit -m "telegram webhook + flask --- 1404/7/10 11:30 am"
-git remote add origin https://github.com/youruser/yourrepo.git
-git push -u origin main
+git push origin main
