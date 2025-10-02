@@ -18,7 +18,14 @@ git status
 git add .
 
 # 7. ÓÇÎÊ commit ÈÇ íÇã íÔİÑÖ (ãíÊæäí ÊÛííÑ ÈÏí)
-git commit -m "Update project changes"
+git commit -m "Update project changes 1404/7/10 9:39 am"
 
 # 8. Push Èå íÊåÇÈ
 git push origin main
+
+-----------------------------------------------------------------------------------
+git init
+git add .
+git commit -m "telegram webhook + flask --- 1404/7/10 11:30 am"
+git remote add origin https://github.com/youruser/yourrepo.git
+git push -u origin main
