@@ -1,23 +1,15 @@
 import os
 import asyncio
-import nest_asyncio
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from openai import OpenAI
-
-# «Ã«“Â «Ã—«Ì async loop œ— Colab
-nest_asyncio.apply()
 
 # -------------------------------
 # ò·ÌœÂ«
 # -------------------------------
-try:
-    from google.colab import userdata
-    TELEGRAM_TOKEN = userdata.get("TELEGRAM_TOKEN_javidaibot")
-    OPENAI_API_KEY = userdata.get("OPENAI_API_KEY")
-except:
-    TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise RuntimeError("ò·ÌœÂ«Ì TELEGRAM_TOKEN Ê OPENAI_API_KEY »«Ìœ ”  ‘Ê‰œ!")
@@ -51,14 +43,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 # -------------------------------
-# ”«Œ  Application
+# ”«Œ  «Å·ÌòÌ‘‰  ·ê—«„
 # -------------------------------
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # -------------------------------
-# «Ã—«Ì polling œ— Colab/·Êò«·
+# ”«Œ  Flask »—«Ì Ê»ÂÊò
 # -------------------------------
-print("?? —»«  œ— Õ«· «Ã—«” ... /start —« »“‰Ìœ.")
-await application.run_polling()
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def index():
+    return "?? Bot is running!", 200
+
+@flask_app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+async def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return "ok", 200
+
+# -------------------------------
+# «Ã—«Ì »—‰«„Â
+# -------------------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
