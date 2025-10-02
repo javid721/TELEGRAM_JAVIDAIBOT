@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("key TELEGRAM_TOKEN æ OPENAI_API_KEY must be set!")
+    raise RuntimeError("key TELEGRAM_TOKEN and OPENAI_API_KEY must be set!")
 
 # -------------------------------
 # conn OpenAI
