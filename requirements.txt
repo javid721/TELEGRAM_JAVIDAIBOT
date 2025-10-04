@@ -1,8 +1,2 @@
-fastapi
-uvicorn[standard]
-requests
-Flask==2.2.5
-python-telegram-bot==13.17
 openai==1.8.5
-gunicorn==21.2.0
-threading
+python-telegram-bot==13.15
