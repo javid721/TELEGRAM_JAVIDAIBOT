@@ -62,15 +62,19 @@ def index():
 def webhook():
     data = request.get_json(force=True)
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+    asyncio.run(application.process_update(update)) 
     return "ok", 200
 
 # -------------------------------
 # اجراي برنامه
 # -------------------------------
 if __name__ == "__main__":
-    bot.remove_webhook()
-    bot.set_webhook(url=f"https://telegram-javidaibot.onrender.com/{TELEGRAM_TOKEN}")
-    os.environ["PORT"] = "4000"
+    async def set_webhook():
+        await application.bot.delete_webhook()
+        await application.bot.set_webhook(url=f"https://telegram-javidaibot.onrender.com/{TELEGRAM_TOKEN}")
+
+    asyncio.run(set_webhook())  # ✅ درست و async-safe
+
+    #os.environ["PORT"] = "4000"
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
