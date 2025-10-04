@@ -69,6 +69,8 @@ async def webhook():
 # اجراي برنامه
 # -------------------------------
 if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://telegram-javidaibot.onrender.com/{TELEGRAM_TOKEN}")
     os.environ["PORT"] = "4000"
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
