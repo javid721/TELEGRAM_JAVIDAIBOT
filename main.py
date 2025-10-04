@@ -1,24 +1,28 @@
 ﻿import os
 import asyncio
+import threading
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from openai import OpenAI
 
 # -------------------------------
-# کليدها
+# تنظیمات
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE", "https://telegram-javidaibot.onrender.com")  # یا از ENV خوانده می‌شه
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("کليدهاي TELEGRAM_TOKEN و OPENAI_API_KEY بايد ست شوند!")
+    raise RuntimeError("کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
+
+WEBHOOK_URL = f"{WEBHOOK_BASE}/{TELEGRAM_TOKEN}"
 
 # -------------------------------
-# اتصال به OpenAI
+# OpenAI client
 # -------------------------------
 client = OpenAI(api_key=OPENAI_API_KEY)
-MODEL = "gpt-4o-mini"   # يا gpt-3.5-turbo براي مصرف کمتر
+MODEL = "gpt-4o-mini"
 
 def ask_openai(prompt: str) -> str:
     try:
@@ -29,13 +33,13 @@ def ask_openai(prompt: str) -> str:
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"? خطا در ارتباط با OpenAI: {e}"
+        return f"⚠️ خطا در ارتباط با OpenAI: {e}"
 
 # -------------------------------
-# هندلرهاي تلگرام
+# handlers
 # -------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام ?? من با OpenAI وصل شدم! هرچي خواستي بپرس.")
+    await update.message.reply_text("سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
@@ -43,45 +47,77 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 # -------------------------------
-# ساخت اپليکيشن تلگرام
+# application (telegram)
 # -------------------------------
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # -------------------------------
-# ساخت Flask براي وبهوک
+# Initialization guard (thread-safe, one-time)
+# -------------------------------
+_init_lock = threading.Lock()
+_initialized = False
+
+async def _init_async():
+    # initialize & start the application (must be awaited)
+    await application.initialize()
+    await application.start()
+    # حذف و ست وبهوک (اختیاری ولی مفید)
+    try:
+        await application.bot.delete_webhook()
+    except Exception as e:
+        print("⚠️ delete_webhook failed:", e)
+    try:
+        await application.bot.set_webhook(url=WEBHOOK_URL)
+        print("✅ webhook set to", WEBHOOK_URL)
+    except Exception as e:
+        print("⚠️ set_webhook failed:", e)
+
+def ensure_initialized():
+    global _initialized
+    if _initialized:
+        return
+    with _init_lock:
+        if _initialized:
+            return
+        print("⏳ initializing telegram Application...")
+        # اجرا در بلاک سینک (مناسب چون routeها sync هستند)
+        asyncio.run(_init_async())
+        _initialized = True
+        print("✅ Application initialized")
+
+# -------------------------------
+# Flask app + webhook route
 # -------------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def index():
-    return "سلام Bot is running!", 200
+    return "🤖 Bot is running!", 200
 
 @flask_app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
+    # اگر هنوز initialize نشده، اینجا انجامش بدهیم (اولین درخواست)
+    ensure_initialized()
+
     data = request.get_json(force=True)
     update = Update.de_json(data, application.bot)
-    asyncio.run(application.process_update(update)) 
+
+    # پردازش update بصورت sync با asyncio.run
+    try:
+        asyncio.run(application.process_update(update))
+    except Exception as e:
+        # لاگ کن تا ببینیم چه خطایی هست
+        print("❌ Error while processing update:", e)
+        raise
+
     return "ok", 200
 
 # -------------------------------
-# اجراي برنامه
+# اگر با python main.py اجرا شد (dev)، هم init کن
 # -------------------------------
 if __name__ == "__main__":
-    async def init_and_run():
-        # initialize & start application
-        await application.initialize()
-        await application.start()
-
-        # ست کردن وبهوک
-        await application.bot.delete_webhook()
-        await application.bot.set_webhook(url=f"https://telegram-javidaibot.onrender.com/{TELEGRAM_TOKEN}")
-
-        print("✅ Bot initialized and webhook set!")
-
-    asyncio.run(init_and_run())
-
-    #os.environ["PORT"] = "4000"
+    ensure_initialized()
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
