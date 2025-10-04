@@ -69,11 +69,18 @@ def webhook():
 # اجراي برنامه
 # -------------------------------
 if __name__ == "__main__":
-    async def set_webhook():
+    async def init_and_run():
+        # initialize & start application
+        await application.initialize()
+        await application.start()
+
+        # ست کردن وبهوک
         await application.bot.delete_webhook()
         await application.bot.set_webhook(url=f"https://telegram-javidaibot.onrender.com/{TELEGRAM_TOKEN}")
 
-    asyncio.run(set_webhook())  # ✅ درست و async-safe
+        print("✅ Bot initialized and webhook set!")
+
+    asyncio.run(init_and_run())
 
     #os.environ["PORT"] = "4000"
     port = int(os.environ.get("PORT", 5000))
