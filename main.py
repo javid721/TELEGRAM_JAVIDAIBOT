@@ -56,7 +56,7 @@ flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def index():
-    return "?? Bot is running!", 200
+    return "سلام Bot is running!", 200
 
 @flask_app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 async def webhook():
