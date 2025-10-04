@@ -1,8 +1,8 @@
 fastapi
 uvicorn[standard]
 requests
-Flask==2.3.2
-python-telegram-bot==20.3
-openai==1.35.7
+Flask==2.3.5
+python-telegram-bot==20.6
+openai==1.8.5
 gunicorn==21.2.0
 threading
