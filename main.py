@@ -1,20 +1,21 @@
 ﻿import os
-import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from openai import OpenAI
+import asyncio
 
 # -------------------------------
 # تنظیمات
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: "https://telegram-javidaibot.onrender.com"
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: "https://your-app.onrender.com"
 
-WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/{TELEGRAM_TOKEN}" if WEBHOOK_BASE else None
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not WEBHOOK_BASE:
+    raise RuntimeError("TELEGRAM_TOKEN, OPENAI_API_KEY و WEBHOOK_BASE باید ست شوند!")
+
+WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/{TELEGRAM_TOKEN}"
 
 # -------------------------------
 # کلاینت OpenAI
@@ -57,8 +58,14 @@ application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+# ست کردن webhook PTB
+async def set_webhook():
+    await application.bot.delete_webhook(drop_pending_updates=True)
+    await application.bot.set_webhook(WEBHOOK_URL)
+    print("🚀 Webhook set to:", WEBHOOK_URL)
+
 # -------------------------------
-# Flask app (Webhook)
+# Flask app
 # -------------------------------
 flask_app = Flask(__name__)
 
@@ -72,23 +79,16 @@ def webhook():
     if not data:
         return "No data", 400
     update = Update.de_json(data, application.bot)
-    asyncio.run(application.update_queue.put(update))
+    # از asyncio.create_task برای async put استفاده می‌کنیم
+    asyncio.create_task(application.update_queue.put(update))
     return "OK", 200
 
 # -------------------------------
-# ست کردن Webhook روی Render
-# -------------------------------
-if WEBHOOK_BASE:
-    try:
-        application.bot.delete_webhook()
-        application.bot.set_webhook(url=WEBHOOK_URL)
-        print("🚀 Webhook set to:", WEBHOOK_URL)
-    except Exception as e:
-        print("⚠️ set_webhook failed:", e)
-
-# -------------------------------
-# Run محلی (اختیاری)
+# Run محلی (اختیاری) و ست کردن webhook
 # -------------------------------
 if __name__ == "__main__":
+    # ست کردن webhook قبل از run کردن Flask
+    asyncio.run(set_webhook())
+
     port = int(os.environ.get("PORT", 5000))
     flask_app.run(host="0.0.0.0", port=port)
