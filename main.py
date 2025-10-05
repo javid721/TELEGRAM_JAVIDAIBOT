@@ -1,8 +1,7 @@
 ﻿import os
 import asyncio
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from flask import Flask, request, jsonify
+from telegram import Bot, Update
 from openai import OpenAI
 
 # -------------------------------
@@ -18,8 +17,9 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/{TELEGRAM_TOKEN}" if WEBHOOK_BASE else None
 
 # -------------------------------
-# کلاینت OpenAI
+# کلاینت‌ها
 # -------------------------------
+bot = Bot(token=TELEGRAM_TOKEN)
 client = OpenAI(api_key=OPENAI_API_KEY)
 MODEL = "gpt-3.5-turbo"
 
@@ -30,7 +30,7 @@ async def ask_openai(prompt: str) -> str:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
-        if hasattr(resp, "choices") and resp.choices:
+        if resp.choices:
             choice = resp.choices[0]
             if hasattr(choice, "message") and hasattr(choice.message, "content"):
                 return choice.message.content
@@ -41,53 +41,47 @@ async def ask_openai(prompt: str) -> str:
         return f"⚠️ خطا در ارتباط با OpenAI: {e}"
 
 # -------------------------------
-# Handlers تلگرام
+# Flask App (Webhook)
 # -------------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
+app = Flask(__name__)
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text or ""
-    reply = await ask_openai(text)
-    await update.message.reply_text(reply)
-
-# -------------------------------
-# Flask app (Webhook)
-# -------------------------------
-flask_app = Flask(__name__)
-
-@flask_app.route("/")
+@app.route("/")
 def index():
     return "✅ Bot is running", 200
 
-@flask_app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     data = request.get_json(force=True)
     if not data:
         return "No data", 400
-    update = Update.de_json(data, application.bot)
-    # اضافه کردن update به queue
-    asyncio.create_task(application.update_queue.put(update))
-    return "OK", 200
+
+    update = Update.de_json(data, bot)
+    asyncio.create_task(handle_update(update))
+    return jsonify({"status": "ok"})
+
+async def handle_update(update: Update):
+    if update.message:
+        text = update.message.text or ""
+        if text.startswith("/start"):
+            await bot.send_message(chat_id=update.message.chat.id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
+        else:
+            reply = await ask_openai(text)
+            await bot.send_message(chat_id=update.message.chat.id, text=reply)
 
 # -------------------------------
-# ساخت Application تلگرام
+# ست کردن Webhook
 # -------------------------------
-application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# ست کردن Webhook روی Render
 if WEBHOOK_BASE:
-    async def setup_webhook():
-        await application.bot.delete_webhook()
-        await application.bot.set_webhook(url=WEBHOOK_URL)
+    try:
+        asyncio.run(bot.delete_webhook())
+        asyncio.run(bot.set_webhook(url=WEBHOOK_URL))
         print("🚀 Webhook set to:", WEBHOOK_URL)
-    asyncio.run(setup_webhook())
+    except Exception as e:
+        print("⚠️ set_webhook failed:", e)
 
 # -------------------------------
 # Run محلی (اختیاری)
 # -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    flask_app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)
