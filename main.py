@@ -10,18 +10,18 @@ from openai import OpenAI
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE", "")  # مثلا https://yourapp.onrender.com
-WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/{TELEGRAM_TOKEN}"
-
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: "https://telegram-javidaibot.onrender.com"
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     raise RuntimeError("کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
 
+WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/{TELEGRAM_TOKEN}" if WEBHOOK_BASE else None
+
+# -------------------------------
+# کلاینت OpenAI
+# -------------------------------
 client = OpenAI(api_key=OPENAI_API_KEY)
 MODEL = "gpt-3.5-turbo"
 
-# -------------------------------
-# فانکشن‌های OpenAI
-# -------------------------------
 async def ask_openai(prompt: str) -> str:
     try:
         resp = client.chat.completions.create(
@@ -78,15 +78,13 @@ def webhook():
 # -------------------------------
 # ست کردن Webhook روی Render
 # -------------------------------
-try:
-    application.bot.delete_webhook()
-    if WEBHOOK_BASE:
+if WEBHOOK_BASE:
+    try:
+        application.bot.delete_webhook()
         application.bot.set_webhook(url=WEBHOOK_URL)
         print("🚀 Webhook set to:", WEBHOOK_URL)
-    else:
-        print("⚠️ WEBHOOK_BASE خالی است — webhook ست نشده.")
-except Exception as e:
-    print("⚠️ set_webhook failed:", e)
+    except Exception as e:
+        print("⚠️ set_webhook failed:", e)
 
 # -------------------------------
 # Run محلی (اختیاری)
