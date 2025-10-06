@@ -47,32 +47,49 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return "✅ Bot is running", 200
+    return "✅ Bot is running ... 1404/07/14 11:10 AM", 200
+
 
 @app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
+@app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
+    """دریافت آپدیت از تلگرام و پردازش در event loop جدید"""
     data = request.get_json(force=True)
     if not data:
         return "No data", 400
 
     update = Update.de_json(data, bot)
-    asyncio.create_task(handle_update(update))
+
+    # ایجاد loop موقت برای اجرای async task
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(handle_update(update))
+    loop.close()
+
     return jsonify({"status": "ok"})
 
+
 async def handle_update(update: Update):
+    """پردازش پیام کاربر"""
     if update.message:
         text = update.message.text or ""
+        chat_id = update.message.chat.id
+
         if text.startswith("/start"):
-            await bot.send_message(chat_id=update.message.chat.id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
+            await bot.send_message(
+                chat_id=chat_id,
+                text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس."
+            )
         else:
             reply = await ask_openai(text)
-            await bot.send_message(chat_id=update.message.chat.id, text=reply)
+            await bot.send_message(chat_id=chat_id, text=reply)
 
 # -------------------------------
 # ست کردن Webhook
 # -------------------------------
 if WEBHOOK_BASE:
     try:
+        print("⚙️ تنظیم webhook...")
         asyncio.run(bot.delete_webhook())
         asyncio.run(bot.set_webhook(url=WEBHOOK_URL))
         print("🚀 Webhook set to:", WEBHOOK_URL)
@@ -80,7 +97,7 @@ if WEBHOOK_BASE:
         print("⚠️ set_webhook failed:", e)
 
 # -------------------------------
-# Run محلی (اختیاری)
+# اجرای محلی (اختیاری)
 # -------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
