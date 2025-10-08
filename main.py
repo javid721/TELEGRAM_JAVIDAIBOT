@@ -1,20 +1,22 @@
 ﻿import os
 import threading
+import logging
+import requests
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
 from openai import OpenAI
 
 # -------------------------------
-# تنظیمات
+# تنظیمات محیطی
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: "https://telegram-javidaibot.onrender.com"
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
+    raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
 
-WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}" if WEBHOOK_BASE else None
+WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 
 # -------------------------------
 # کلاینت‌ها
@@ -24,30 +26,38 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 MODEL = "gpt-3.5-turbo"
 
 # -------------------------------
+# تنظیم لاگ‌ها
+# -------------------------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# -------------------------------
 # Flask App
 # -------------------------------
 app = Flask(__name__)
 
 @app.route("/")
-def index():
-    return "✅ Bot is running ...", 200
+def home():
+    return "✅ Bot is running successfully on Render!", 200
+
 
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت و پردازش در Thread جداگانه"""
+    """دریافت آپدیت از تلگرام و اجرای آن در Thread جدا"""
     data = request.get_json(force=True)
     if not data:
-        return "No data", 400
+        return jsonify({"error": "No data"}), 400
 
     update = Update.de_json(data, bot)
     threading.Thread(target=handle_update, args=(update,)).start()
     return jsonify({"status": "ok"}), 200
 
+
 # -------------------------------
 # توابع اصلی
 # -------------------------------
 def ask_openai(prompt: str) -> str:
-    """درخواست به OpenAI و دریافت پاسخ"""
+    """ارسال پیام به OpenAI و دریافت پاسخ"""
     try:
         resp = client.chat.completions.create(
             model=MODEL,
@@ -57,10 +67,12 @@ def ask_openai(prompt: str) -> str:
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        return f"⚠️ خطا در ارتباط با OpenAI: {e}"
+        logger.error(f"⚠️ خطا در ارتباط با OpenAI: {e}")
+        return "⚠️ خطا در پاسخ از OpenAI. لطفاً بعداً دوباره تلاش کنید."
+
 
 def handle_update(update: Update):
-    """پردازش پیام‌های تلگرام"""
+    """پردازش پیام تلگرام"""
     if not update.message:
         return
 
@@ -69,28 +81,34 @@ def handle_update(update: Update):
 
     try:
         if text.startswith("/start"):
-            await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
+            bot.send_message(
+                chat_id=chat_id,
+                text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊"
+            )
         else:
             reply = ask_openai(text)
-            await bot.send_message(chat_id=chat_id, text=reply)
+            bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
-        print(f"❌ handle_update error: {e}")
-        await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+        logger.error(f"❌ handle_update error: {e}")
+        bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+
 
 # -------------------------------
-# ست کردن Webhook
+# تنظیم Webhook در زمان اجرا
 # -------------------------------
 def set_webhook():
-    import requests
     try:
-        res = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
-                           params={"url": WEBHOOK_URL})
+        res = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+            params={"url": WEBHOOK_URL}
+        )
         if res.status_code == 200:
-            print("🚀 Webhook set to:", WEBHOOK_URL)
+            logger.info(f"🚀 Webhook set to: {WEBHOOK_URL}")
         else:
-            print("⚠️ setWebhook failed:", res.text)
+            logger.error(f"⚠️ setWebhook failed: {res.text}")
     except Exception as e:
-        print("⚠️ set_webhook exception:", e)
+        logger.error(f"⚠️ set_webhook exception: {e}")
+
 
 # -------------------------------
 # اجرای برنامه
