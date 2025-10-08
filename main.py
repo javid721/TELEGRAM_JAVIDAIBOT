@@ -69,13 +69,13 @@ def handle_update(update: Update):
 
     try:
         if text.startswith("/start"):
-            bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
+            await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس.")
         else:
             reply = ask_openai(text)
-            bot.send_message(chat_id=chat_id, text=reply)
+            await bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
         print(f"❌ handle_update error: {e}")
-        bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+        await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 # -------------------------------
 # ست کردن Webhook
