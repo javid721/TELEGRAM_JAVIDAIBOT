@@ -34,7 +34,9 @@ request_config = HTTPXRequest(
 bot = Bot(token=TELEGRAM_TOKEN, request=request_config)
 
 client = OpenAI(api_key=OPENAI_API_KEY)
-MODEL = "gpt-3.5-turbo"
+#MODEL = "gpt-3.5-turbo"
+MODEL = "gpt-4o-mini"
+
 
 # -------------------------------
 # لاگر
