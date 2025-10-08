@@ -1,10 +1,10 @@
 ﻿import os
-import threading
 import logging
 import asyncio
 import requests
+import httpx
 from flask import Flask, request, jsonify
-from telegram import Bot, Update
+from telegram import Update, Bot
 from openai import OpenAI
 
 # -------------------------------
@@ -20,22 +20,29 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not WEBHOOK_BASE:
 WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 
 # -------------------------------
-# کلاینت‌ها
-# -------------------------------
-bot = Bot(token=TELEGRAM_TOKEN)
-client = OpenAI(api_key=OPENAI_API_KEY)
-MODEL = "gpt-3.5-turbo"
-
-# -------------------------------
 # لاگر
 # -------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # -------------------------------
+# کلاینت‌ها
+# -------------------------------
+# پیکربندی اختصاصی HTTPX برای تلگرام (جلوگیری از Pool timeout)
+httpx_client = httpx.AsyncClient(
+    limits=httpx.Limits(max_connections=50, max_keepalive_connections=25),
+    timeout=httpx.Timeout(20.0)
+)
+
+bot = Bot(token=TELEGRAM_TOKEN, request=httpx_client)
+client = OpenAI(api_key=OPENAI_API_KEY)
+MODEL = "gpt-3.5-turbo"
+
+# -------------------------------
 # Flask app
 # -------------------------------
 app = Flask(__name__)
+
 
 @app.route("/")
 def home():
@@ -43,14 +50,14 @@ def home():
 
 
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
+async def webhook():
     """دریافت آپدیت از تلگرام"""
     data = request.get_json(force=True)
     if not data:
         return jsonify({"error": "No data"}), 400
 
     update = Update.de_json(data, bot)
-    threading.Thread(target=lambda: asyncio.run(handle_update(update))).start()
+    asyncio.create_task(handle_update(update))  # async-friendly
     return jsonify({"status": "ok"}), 200
 
 
@@ -89,13 +96,15 @@ async def handle_update(update: Update):
                 text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊"
             )
         else:
-            # اجرای OpenAI در Thread جدا تا event loop قفل نشه
             loop = asyncio.get_event_loop()
             reply = await loop.run_in_executor(None, ask_openai, text)
             await bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
         logger.error(f"❌ handle_update error: {e}")
-        await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+        try:
+            await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+        except Exception:
+            pass
 
 
 # -------------------------------
