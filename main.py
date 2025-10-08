@@ -1,75 +1,59 @@
 ﻿import os
 import threading
 import logging
+import asyncio
 import requests
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
-import openai  # نسخه 1.30.1
 
 # -------------------------------
 # تنظیمات محیطی
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: "https://telegram-javidaibot.onrender.com"
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")
 
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN و OPENAI_API_KEY باید ست شوند!")
+if not TELEGRAM_TOKEN or not WEBHOOK_BASE:
+    raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN و WEBHOOK_BASE باید ست شوند!")
 
 WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 
 # -------------------------------
-# کلاینت‌ها
+# کلاینت تلگرام
 # -------------------------------
 bot = Bot(token=TELEGRAM_TOKEN)
-openai.api_key = OPENAI_API_KEY
-MODEL = "gpt-3.5-turbo"
 
 # -------------------------------
-# تنظیم لاگ‌ها
+# لاگر
 # -------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # -------------------------------
-# Flask App
+# Flask app
 # -------------------------------
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "✅ Bot is running successfully on Render!", 200
+    return "✅ Telegram Bot Test is running!", 200
+
 
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت از تلگرام و اجرای آن در Thread جدا"""
+    """دریافت آپدیت از تلگرام"""
     data = request.get_json(force=True)
     if not data:
         return jsonify({"error": "No data"}), 400
 
     update = Update.de_json(data, bot)
-    threading.Thread(target=handle_update, args=(update,)).start()
+    threading.Thread(target=lambda: asyncio.run(handle_update(update))).start()
     return jsonify({"status": "ok"}), 200
 
-# -------------------------------
-# توابع اصلی
-# -------------------------------
-def ask_openai(prompt: str) -> str:
-    """ارسال پیام به OpenAI و دریافت پاسخ"""
-    try:
-        resp = openai.ChatCompletion.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
-        )
-        return resp.choices[0].message["content"].strip()
-    except Exception as e:
-        logger.error(f"⚠️ خطا در ارتباط با OpenAI: {e}")
-        return "⚠️ خطا در پاسخ از OpenAI. لطفاً بعداً دوباره تلاش کنید."
 
-def handle_update(update: Update):
-    """پردازش پیام تلگرام"""
+# -------------------------------
+# پردازش پیام‌ها (فقط تلگرام)
+# -------------------------------
+async def handle_update(update: Update):
     if not update.message:
         return
 
@@ -78,19 +62,15 @@ def handle_update(update: Update):
 
     try:
         if text.startswith("/start"):
-            bot.send_message(
-                chat_id=chat_id,
-                text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊"
-            )
+            await bot.send_message(chat_id=chat_id, text="سلام 👋 این یه تست ساده است. ارتباط فعاله ✅")
         else:
-            reply = ask_openai(text)
-            bot.send_message(chat_id=chat_id, text=reply)
+            await bot.send_message(chat_id=chat_id, text=f"دریافت شد: {text}")
     except Exception as e:
         logger.error(f"❌ handle_update error: {e}")
-        bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+
 
 # -------------------------------
-# تنظیم Webhook در زمان اجرا
+# تنظیم Webhook
 # -------------------------------
 def set_webhook():
     try:
@@ -104,6 +84,7 @@ def set_webhook():
             logger.error(f"⚠️ setWebhook failed: {res.text}")
     except Exception as e:
         logger.error(f"⚠️ set_webhook exception: {e}")
+
 
 # -------------------------------
 # اجرای برنامه
