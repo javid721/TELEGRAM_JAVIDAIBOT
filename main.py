@@ -5,22 +5,26 @@ import asyncio
 import requests
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
+from openai import OpenAI
 
 # -------------------------------
 # تنظیمات محیطی
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: https://telegram-javidaibot.onrender.com
 
-if not TELEGRAM_TOKEN or not WEBHOOK_BASE:
-    raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN و WEBHOOK_BASE باید ست شوند!")
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not WEBHOOK_BASE:
+    raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN, OPENAI_API_KEY و WEBHOOK_BASE باید ست شوند!")
 
 WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 
 # -------------------------------
-# کلاینت تلگرام
+# کلاینت‌ها
 # -------------------------------
 bot = Bot(token=TELEGRAM_TOKEN)
+client = OpenAI(api_key=OPENAI_API_KEY)
+MODEL = "gpt-3.5-turbo"
 
 # -------------------------------
 # لاگر
@@ -35,7 +39,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "✅ Telegram Bot Test is running!", 200
+    return "✅ Telegram + OpenAI bot is running!", 200
 
 
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
@@ -51,7 +55,25 @@ def webhook():
 
 
 # -------------------------------
-# پردازش پیام‌ها (فقط تلگرام)
+# ارتباط با OpenAI
+# -------------------------------
+def ask_openai(prompt: str) -> str:
+    """ارسال پیام به OpenAI و دریافت پاسخ"""
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=500
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"⚠️ خطا در ارتباط با OpenAI: {e}")
+        return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً دوباره تلاش کنید."
+
+
+# -------------------------------
+# پردازش پیام‌های تلگرام
 # -------------------------------
 async def handle_update(update: Update):
     if not update.message:
@@ -62,11 +84,18 @@ async def handle_update(update: Update):
 
     try:
         if text.startswith("/start"):
-            await bot.send_message(chat_id=chat_id, text="سلام 👋 این یه تست ساده است. ارتباط فعاله ✅")
+            await bot.send_message(
+                chat_id=chat_id,
+                text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊"
+            )
         else:
-            await bot.send_message(chat_id=chat_id, text=f"دریافت شد: {text}")
+            # اجرای OpenAI در Thread جدا تا event loop قفل نشه
+            loop = asyncio.get_event_loop()
+            reply = await loop.run_in_executor(None, ask_openai, text)
+            await bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
         logger.error(f"❌ handle_update error: {e}")
+        await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
 
 
 # -------------------------------
