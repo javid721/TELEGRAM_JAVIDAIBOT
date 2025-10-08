@@ -5,6 +5,7 @@ import asyncio
 import requests
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
+from telegram.request import HTTPXRequest
 from openai import OpenAI
 
 # -------------------------------
@@ -12,7 +13,7 @@ from openai import OpenAI
 # -------------------------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")  # مثال: https://telegram-javidaibot.onrender.com
+WEBHOOK_BASE = os.environ.get("WEBHOOK_BASE")
 
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY or not WEBHOOK_BASE:
     raise RuntimeError("❌ کلیدهای TELEGRAM_TOKEN, OPENAI_API_KEY و WEBHOOK_BASE باید ست شوند!")
@@ -22,7 +23,16 @@ WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 # -------------------------------
 # کلاینت‌ها
 # -------------------------------
-bot = Bot(token=TELEGRAM_TOKEN)
+# ✅ افزایش pool برای جلوگیری از خطای Pool timeout
+request_config = HTTPXRequest(
+    connection_pool_size=50,   # پیش‌فرض 10 است، اینجا افزایش دادیم
+    connect_timeout=10.0,
+    read_timeout=30.0,
+    write_timeout=30.0,
+    pool_timeout=15.0,
+)
+bot = Bot(token=TELEGRAM_TOKEN, request=request_config)
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 MODEL = "gpt-3.5-turbo"
 
@@ -50,10 +60,7 @@ def webhook():
         return jsonify({"error": "No data"}), 400
 
     update = Update.de_json(data, bot)
-
-    # اجرای async در Thread جدا برای جلوگیری از بلاک شدن Flask
     threading.Thread(target=lambda: asyncio.run(handle_update(update))).start()
-
     return jsonify({"status": "ok"}), 200
 
 
@@ -79,7 +86,6 @@ def ask_openai(prompt: str) -> str:
 # پردازش پیام‌های تلگرام
 # -------------------------------
 async def handle_update(update: Update):
-    """پردازش پیام تلگرام"""
     if not update.message:
         return
 
@@ -88,12 +94,8 @@ async def handle_update(update: Update):
 
     try:
         if text.startswith("/start"):
-            await bot.send_message(
-                chat_id=chat_id,
-                text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊"
-            )
+            await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊")
         else:
-            # اجرای OpenAI در Thread جدا تا loop قفل نشه
             loop = asyncio.get_event_loop()
             reply = await loop.run_in_executor(None, ask_openai, text)
             await bot.send_message(chat_id=chat_id, text=reply)
