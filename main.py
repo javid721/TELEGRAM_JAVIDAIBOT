@@ -54,15 +54,29 @@ def home():
     return "✅ Telegram + OpenAI bot is running!", 200
 
 
+# -------------------------------
+# Flask route
+# -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت از تلگرام"""
+    """دریافت آپدیت از تلگرام و اجرای async بدون بستن event loop"""
     data = request.get_json(force=True)
     if not data:
         return jsonify({"error": "No data"}), 400
 
     update = Update.de_json(data, bot)
-    threading.Thread(target=lambda: asyncio.run(handle_update(update))).start()
+
+    # استفاده از event loop سراسری (نه asyncio.run)
+    loop = asyncio.get_event_loop()
+
+    # اگر loop بسته شده، یه loop جدید بساز و ست کن
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # اجرای تسک بدون بلاک شدن Flask
+    threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
+
     return jsonify({"status": "ok"}), 200
 
 
@@ -80,6 +94,9 @@ def ask_openai(prompt: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
+        if "insufficient_quota" in str(e) or "429" in str(e):
+            logger.error("🚫 محدودیت استفاده از OpenAI پر شده است.")
+            return "🚫 متأسفم، سهمیه‌ی استفاده از OpenAI تموم شده. لطفاً بعداً دوباره امتحان کنید یا billing رو فعال کنید."
         logger.error(f"⚠️ خطا در ارتباط با OpenAI: {e}")
         return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً دوباره تلاش کنید."
 
