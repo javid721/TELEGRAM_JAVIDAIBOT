@@ -59,25 +59,27 @@ def home():
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت از تلگرام و اجرای async بدون بستن event loop"""
-    data = request.get_json(force=True)
-    if not data:
-        return jsonify({"error": "No data"}), 400
+    try:
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            return jsonify({"error": "No data"}), 400
 
-    update = Update.de_json(data, bot)
+        # اگه message وجود نداشت، رد کن (مثلاً callback_query)
+        if "message" not in data:
+            logger.warning(f"⚠️ Update بدون message: {data.keys()}")
+            return jsonify({"status": "ignored"}), 200
 
-    # استفاده از event loop سراسری (نه asyncio.run)
-    loop = asyncio.get_event_loop()
+        update = Update.de_json(data, bot)
 
-    # اگر loop بسته شده، یه loop جدید بساز و ست کن
-    if loop.is_closed():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
 
-    # اجرای تسک بدون بلاک شدن Flask
-    threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
+        return jsonify({"status": "ok"}), 200
 
-    return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error(f"❌ Exception in webhook: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 200
 
 
 # -------------------------------
