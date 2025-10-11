@@ -59,7 +59,7 @@ def home():
 # -------------------------------
 # Flask route
 # -------------------------------
-@app.route(f"/webhook/{TOKEN}", methods=["POST"])
+@app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
     try:
         update = request.get_json()
