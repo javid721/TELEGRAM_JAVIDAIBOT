@@ -59,29 +59,18 @@ def home():
 # -------------------------------
 # Flask route
 # -------------------------------
-@app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
+@app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json(force=True, silent=True)
-        if not data:
-            return jsonify({"error": "No data"}), 400
-
-        # اگه message وجود نداشت، رد کن (مثلاً callback_query)
-        if "message" not in data:
-            logger.warning(f"⚠️ Update بدون message: {data.keys()}")
-            return jsonify({"status": "ignored"}), 200
-
-        update = Update.de_json(data, bot)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
-
-        return jsonify({"status": "ok"}), 200
-
+        update = request.get_json()
+        asyncio.run(handle_update(update))
+        return "OK", 200
     except Exception as e:
-        logger.error(f"❌ Exception in webhook: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 200
+        import traceback
+        print("❌ Webhook Error:", e)
+        traceback.print_exc()
+        return "Internal Server Error", 500
+
 
 
 # -------------------------------
