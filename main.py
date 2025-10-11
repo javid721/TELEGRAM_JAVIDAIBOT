@@ -8,6 +8,8 @@ from telegram import Bot, Update
 from telegram.request import HTTPXRequest
 from openai import OpenAI
 
+print("🔧 App booting up...", flush=True)
+
 # -------------------------------
 # تنظیمات محیطی
 # -------------------------------
@@ -148,6 +150,7 @@ def set_webhook():
 # -------------------------------
 # اجرای برنامه
 # -------------------------------
+print("🚀 Flask starting...", flush=True)
 if __name__ == "__main__":
     set_webhook()
     port = int(os.environ.get("PORT", 5000))
