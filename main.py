@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify
 from telegram import Bot, Update
 from telegram.request import HTTPXRequest
 from openai import OpenAI
+import traceback
 
 print("🔧 App booting up...", flush=True)
 
@@ -25,20 +26,16 @@ WEBHOOK_URL = f"{WEBHOOK_BASE.rstrip('/')}/webhook/{TELEGRAM_TOKEN}"
 # -------------------------------
 # کلاینت‌ها
 # -------------------------------
-# ✅ افزایش pool برای جلوگیری از خطای Pool timeout
 request_config = HTTPXRequest(
-    connection_pool_size=50,   # پیش‌فرض 10 است، اینجا افزایش دادیم
+    connection_pool_size=50,
     connect_timeout=10.0,
     read_timeout=30.0,
     write_timeout=30.0,
     pool_timeout=15.0,
 )
 bot = Bot(token=TELEGRAM_TOKEN, request=request_config)
-
 client = OpenAI(api_key=OPENAI_API_KEY)
-#MODEL = "gpt-3.5-turbo"
 MODEL = "gpt-4o-mini"
-
 
 # -------------------------------
 # لاگر
@@ -57,27 +54,58 @@ def home():
 
 
 # -------------------------------
-# Flask route
+# Webhook Route (راه‌حل ۲)
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
+    """دریافت آپدیت از تلگرام و هندل ایمن آن (بدون ۵۰۰ حتی با JSON ناقص)"""
     try:
-        update = request.get_json()
-        asyncio.run(handle_update(update))
-        return "OK", 200
-    except Exception as e:
-        import traceback
-        print("❌ Webhook Error:", e)
-        traceback.print_exc()
-        return "Internal Server Error", 500
+        data = request.get_json(force=True, silent=True)
+        logger.info(f"📩 Incoming webhook: {data}")
 
+        # بررسی اولیه
+        if not data:
+            logger.warning("⚠️ Webhook بدون JSON")
+            return jsonify({"error": "No data"}), 400
+
+        # بررسی وجود message
+        if "message" not in data:
+            logger.warning(f"⚠️ Webhook بدون فیلد message — keys={list(data.keys())}")
+            return jsonify({"status": "ignored"}), 200
+
+        # بررسی فیلدهای ضروری برای جلوگیری از KeyError در Update.de_json
+        msg = data["message"]
+        if "date" not in msg or "message_id" not in msg or "chat" not in msg:
+            logger.warning(f"⚠️ Message ناقص: {msg}")
+            return jsonify({"status": "invalid_message"}), 200
+
+        try:
+            update = Update.de_json(data, bot)
+        except Exception as e:
+            logger.error(f"❌ خطا در parse کردن Update: {e}")
+            traceback.print_exc()
+            return jsonify({"status": "invalid_update"}), 200
+
+        # اجرای هندلر در ترد جدا برای جلوگیری از بلاک شدن Flask
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
+
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        logger.error(f"❌ Exception در webhook: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "internal error"}), 200
 
 
 # -------------------------------
 # ارتباط با OpenAI
 # -------------------------------
 def ask_openai(prompt: str) -> str:
-    """ارسال پیام به OpenAI و دریافت پاسخ"""
     try:
         response = client.chat.completions.create(
             model=MODEL,
@@ -89,21 +117,19 @@ def ask_openai(prompt: str) -> str:
     except Exception as e:
         if "insufficient_quota" in str(e) or "429" in str(e):
             logger.error("🚫 محدودیت استفاده از OpenAI پر شده است.")
-            return "🚫 متأسفم، سهمیه‌ی استفاده از OpenAI تموم شده. لطفاً بعداً دوباره امتحان کنید یا billing رو فعال کنید."
-        logger.error(f"⚠️ خطا در ارتباط با OpenAI: {e}")
-        return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً دوباره تلاش کنید."
+            return "🚫 سهمیه‌ی OpenAI تموم شده. لطفاً بعداً امتحان کنید."
+        logger.error(f"⚠️ خطا در OpenAI: {e}")
+        return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً تلاش کنید."
 
 
 # -------------------------------
-# پردازش پیام‌های تلگرام
+# پردازش پیام تلگرام
 # -------------------------------
 async def handle_update(update: Update):
     if not update.message:
         return
-
     chat_id = update.message.chat.id
     text = update.message.text or ""
-
     try:
         if text.startswith("/start"):
             await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊")
@@ -114,7 +140,7 @@ async def handle_update(update: Update):
     except Exception as e:
         logger.error(f"❌ handle_update error: {e}")
         try:
-            await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+            await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. دوباره تلاش کنید.")
         except:
             pass
 
