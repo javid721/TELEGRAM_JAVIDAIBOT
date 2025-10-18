@@ -1,4 +1,5 @@
 ﻿import os
+import threading
 import logging
 import asyncio
 import requests
@@ -52,11 +53,23 @@ def home():
     return "✅ Telegram + OpenAI bot is running!", 200
 
 # -------------------------------
-# Webhook Route
+# ✅ راه‌اندازی loop پس‌زمینه
+# -------------------------------
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+def start_background_loop():
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+threading.Thread(target=start_background_loop, daemon=True).start()
+
+# -------------------------------
+# Webhook Route (sync برای Flask معمولی)
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
-async def webhook():
-    """نسخه async کامل برای سازگاری با Render"""
+def webhook():
+    """دریافت پیام از تلگرام و اجرای async handler در loop جدا"""
     try:
         data = request.get_json(force=True, silent=True)
         logger.info(f"📩 Incoming webhook: {data}")
@@ -66,10 +79,6 @@ async def webhook():
         if "message" not in data:
             return jsonify({"status": "ignored"}), 200
 
-        msg = data["message"]
-        if "date" not in msg or "message_id" not in msg or "chat" not in msg:
-            return jsonify({"status": "invalid_message"}), 200
-
         try:
             update = Update.de_json(data, bot)
         except Exception as e:
@@ -77,8 +86,9 @@ async def webhook():
             traceback.print_exc()
             return jsonify({"status": "invalid_update"}), 200
 
-        # ✅ اجرای مستقیم تابع async بدون threading
-        await handle_update(update)
+        # ✅ اجرای تابع async در loop جدا
+        asyncio.run_coroutine_threadsafe(handle_update(update), loop)
+
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
@@ -87,7 +97,7 @@ async def webhook():
         return jsonify({"error": "internal error"}), 200
 
 # -------------------------------
-# ارتباط با OpenAI
+# OpenAI
 # -------------------------------
 def ask_openai(prompt: str) -> str:
     try:
@@ -99,22 +109,19 @@ def ask_openai(prompt: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        if "insufficient_quota" in str(e) or "429" in str(e):
-            logger.error("🚫 محدودیت استفاده از OpenAI پر شده است.")
-            return "🚫 سهمیه‌ی OpenAI تموم شده. لطفاً بعداً امتحان کنید."
         logger.error(f"⚠️ خطا در OpenAI: {e}")
-        return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً تلاش کنید."
+        if "quota" in str(e):
+            return "🚫 سهمیه‌ی OpenAI تموم شده!"
+        return "⚠️ خطا در ارتباط با OpenAI."
 
 # -------------------------------
-# پردازش پیام تلگرام
+# Handle Telegram Update
 # -------------------------------
 async def handle_update(update: Update):
     if not update.message:
         return
-
     chat_id = update.message.chat.id
     text = update.message.text or ""
-
     try:
         if text.startswith("/start"):
             await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊")
@@ -127,7 +134,7 @@ async def handle_update(update: Update):
         traceback.print_exc()
         try:
             await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. دوباره تلاش کنید.")
-        except Exception:
+        except:
             pass
 
 # -------------------------------
@@ -147,9 +154,8 @@ def set_webhook():
         logger.error(f"⚠️ set_webhook exception: {e}")
 
 # -------------------------------
-# اجرای برنامه
+# Run App
 # -------------------------------
-print("🚀 Flask starting...", flush=True)
 if __name__ == "__main__":
     set_webhook()
     port = int(os.environ.get("PORT", 5000))
