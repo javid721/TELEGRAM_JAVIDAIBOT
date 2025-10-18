@@ -54,26 +54,34 @@ def home():
 
 
 # -------------------------------
+# ✅ ساخت loop جداگانه در پس‌زمینه
+# -------------------------------
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+def start_background_loop():
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+threading.Thread(target=start_background_loop, daemon=True).start()
+
+
+# -------------------------------
 # Webhook Route
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت از تلگرام و اجرای امن هندلر"""
     try:
         data = request.get_json(force=True, silent=True)
         logger.info(f"📩 Incoming webhook: {data}")
 
         if not data:
-            logger.warning("⚠️ Webhook بدون JSON")
             return jsonify({"error": "No data"}), 400
-
         if "message" not in data:
-            logger.warning(f"⚠️ Webhook بدون فیلد message — keys={list(data.keys())}")
             return jsonify({"status": "ignored"}), 200
 
         msg = data["message"]
         if "date" not in msg or "message_id" not in msg or "chat" not in msg:
-            logger.warning(f"⚠️ Message ناقص: {msg}")
             return jsonify({"status": "invalid_message"}), 200
 
         try:
@@ -83,15 +91,8 @@ def webhook():
             traceback.print_exc()
             return jsonify({"status": "invalid_update"}), 200
 
-        # ✅ اجرای async تابع در ترد جدا با event loop مستقل
-        def run_async(update_obj):
-            try:
-                asyncio.run(handle_update(update_obj))
-            except Exception as e:
-                logger.error(f"⚠️ Thread async error: {e}")
-                traceback.print_exc()
-
-        threading.Thread(target=lambda: run_async(update)).start()
+        # ✅ اجرای امن در loop پس‌زمینه
+        asyncio.run_coroutine_threadsafe(handle_update(update), loop)
 
         return jsonify({"status": "ok"}), 200
 
@@ -133,7 +134,7 @@ async def handle_update(update: Update):
         if text.startswith("/start"):
             await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊")
         else:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             reply = await loop.run_in_executor(None, ask_openai, text)
             await bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
