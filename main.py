@@ -54,26 +54,23 @@ def home():
 
 
 # -------------------------------
-# Webhook Route (راه‌حل ۲)
+# Webhook Route
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
 def webhook():
-    """دریافت آپدیت از تلگرام و هندل ایمن آن (بدون ۵۰۰ حتی با JSON ناقص)"""
+    """دریافت آپدیت از تلگرام و اجرای امن هندلر"""
     try:
         data = request.get_json(force=True, silent=True)
         logger.info(f"📩 Incoming webhook: {data}")
 
-        # بررسی اولیه
         if not data:
             logger.warning("⚠️ Webhook بدون JSON")
             return jsonify({"error": "No data"}), 400
 
-        # بررسی وجود message
         if "message" not in data:
             logger.warning(f"⚠️ Webhook بدون فیلد message — keys={list(data.keys())}")
             return jsonify({"status": "ignored"}), 200
 
-        # بررسی فیلدهای ضروری برای جلوگیری از KeyError در Update.de_json
         msg = data["message"]
         if "date" not in msg or "message_id" not in msg or "chat" not in msg:
             logger.warning(f"⚠️ Message ناقص: {msg}")
@@ -86,13 +83,15 @@ def webhook():
             traceback.print_exc()
             return jsonify({"status": "invalid_update"}), 200
 
-        # اجرای هندلر در ترد جدا برای جلوگیری از بلاک شدن Flask
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # ✅ اجرای async تابع در ترد جدا با event loop مستقل
+        def run_async(update_obj):
+            try:
+                asyncio.run(handle_update(update_obj))
+            except Exception as e:
+                logger.error(f"⚠️ Thread async error: {e}")
+                traceback.print_exc()
 
-        threading.Thread(target=lambda: loop.create_task(handle_update(update))).start()
+        threading.Thread(target=lambda: run_async(update)).start()
 
         return jsonify({"status": "ok"}), 200
 
@@ -139,6 +138,7 @@ async def handle_update(update: Update):
             await bot.send_message(chat_id=chat_id, text=reply)
     except Exception as e:
         logger.error(f"❌ handle_update error: {e}")
+        traceback.print_exc()
         try:
             await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. دوباره تلاش کنید.")
         except:
