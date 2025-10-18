@@ -1,13 +1,12 @@
 ﻿import os
-import threading
 import logging
 import asyncio
 import requests
+import traceback
 from flask import Flask, request, jsonify
 from telegram import Bot, Update
 from telegram.request import HTTPXRequest
 from openai import OpenAI
-import traceback
 
 print("🔧 App booting up...", flush=True)
 
@@ -52,25 +51,12 @@ app = Flask(__name__)
 def home():
     return "✅ Telegram + OpenAI bot is running!", 200
 
-
-# -------------------------------
-# ✅ ساخت loop جداگانه در پس‌زمینه
-# -------------------------------
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-def start_background_loop():
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
-threading.Thread(target=start_background_loop, daemon=True).start()
-
-
 # -------------------------------
 # Webhook Route
 # -------------------------------
 @app.route(f"/webhook/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
+async def webhook():
+    """نسخه async کامل برای سازگاری با Render"""
     try:
         data = request.get_json(force=True, silent=True)
         logger.info(f"📩 Incoming webhook: {data}")
@@ -91,16 +77,14 @@ def webhook():
             traceback.print_exc()
             return jsonify({"status": "invalid_update"}), 200
 
-        # ✅ اجرای امن در loop پس‌زمینه
-        asyncio.run_coroutine_threadsafe(handle_update(update), loop)
-
+        # ✅ اجرای مستقیم تابع async بدون threading
+        await handle_update(update)
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         logger.error(f"❌ Exception در webhook: {e}")
         traceback.print_exc()
         return jsonify({"error": "internal error"}), 200
-
 
 # -------------------------------
 # ارتباط با OpenAI
@@ -111,7 +95,7 @@ def ask_openai(prompt: str) -> str:
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=500
+            max_tokens=500,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -121,15 +105,16 @@ def ask_openai(prompt: str) -> str:
         logger.error(f"⚠️ خطا در OpenAI: {e}")
         return "⚠️ خطا در ارتباط با OpenAI. لطفاً بعداً تلاش کنید."
 
-
 # -------------------------------
 # پردازش پیام تلگرام
 # -------------------------------
 async def handle_update(update: Update):
     if not update.message:
         return
+
     chat_id = update.message.chat.id
     text = update.message.text or ""
+
     try:
         if text.startswith("/start"):
             await bot.send_message(chat_id=chat_id, text="سلام 👋 من به OpenAI وصلم! هرچی خواستی بپرس 😊")
@@ -142,9 +127,8 @@ async def handle_update(update: Update):
         traceback.print_exc()
         try:
             await bot.send_message(chat_id=chat_id, text="⚠️ مشکلی پیش آمد. دوباره تلاش کنید.")
-        except:
+        except Exception:
             pass
-
 
 # -------------------------------
 # تنظیم Webhook
@@ -153,7 +137,7 @@ def set_webhook():
     try:
         res = requests.get(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
-            params={"url": WEBHOOK_URL}
+            params={"url": WEBHOOK_URL},
         )
         if res.status_code == 200:
             logger.info(f"🚀 Webhook set to: {WEBHOOK_URL}")
@@ -161,7 +145,6 @@ def set_webhook():
             logger.error(f"⚠️ setWebhook failed: {res.text}")
     except Exception as e:
         logger.error(f"⚠️ set_webhook exception: {e}")
-
 
 # -------------------------------
 # اجرای برنامه
